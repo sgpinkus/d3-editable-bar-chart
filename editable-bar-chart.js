@@ -37,18 +37,17 @@ class EditableBarChart
     if(options.range == null) {
       options.range = [Math.min.apply(null, this.data), Math.max.apply(null, this.data)]
     }
-    this.x = d3.scaleBand().rangeRound([0, this.width]).padding(0.1).domain(Object.keys(data))
-    this.y = d3.scaleLinear().rangeRound([this.height,0]).domain(options.range);
+    this.xAxis = d3.scaleBand().rangeRound([0, this.width]).padding(0.1).domain(Object.keys(data).map(i => +i))
+    this.yAxis = d3.scaleLinear().rangeRound([this.height,0]).domain(options.range);
     this.g.append('g')
         .attr('class', 'axis axis--x')
         .attr('transform', 'translate(0,' + this.height + ')')
-        .call(d3.axisBottom(this.x).tickFormat(options.xFormatter))
+        .call(d3.axisBottom(this.xAxis).tickFormat(options.xFormatter))
     this.g.selectAll('.axis--x g.tick text')
         .attr('transform', 'rotate(-90) translate(-20,-14)')
     this.g.append('g')
         .attr('class', 'axis axis--y')
-        .call(d3.axisLeft(this.y).ticks(10, ''))
-    console.log(this.xi)
+        .call(d3.axisLeft(this.yAxis).ticks(10, ''))
   }
 
   /**
@@ -56,18 +55,18 @@ class EditableBarChart
    */
   draw() {
     var dg = d3.drag()
-    var circles = this.g.selectAll('.bar').data(this.data).enter()
+    var bars = this.g.selectAll('.bar').data(this.data).enter()
         .append('g')
-        .attr('transform', (d,i) => { return 'translate(' +  this.x(i) + ',0)'; })
-    circles.append('rect')
+        .attr('transform', (d,i) => { return 'translate(' +  this.xAxis(i) + ',0)'; })
+    bars.append('rect')
         .attr('class', 'bar-bar')
-        .attr('width', this.x.bandwidth())
-        .attr('transform', (d) => { return 'translate(0,' + this.y(d) + ')'; })
-        .attr('height',  (d) => { return this.height - this.y(d); })
+        .attr('width', this.xAxis.bandwidth())
+        .attr('transform', (d) => { return 'translate(0,' + this.yAxis(d) + ')'; })
+        .attr('height',  (d) => { return this.height - this.yAxis(d); })
         .call(dg.on('start', (d, i, n) => { this.started(d, i, n) }))
         .call(dg.on('drag', (d, i, n) => { this.dragged(d, i, n) }))
         .call(dg.on('end', (d, i, n) => { this.stopped(d, i, n) }))
-    circles.exit()
+    bars.exit()
   }
 
   started(d, i, n) {
@@ -104,15 +103,15 @@ class EditableBarChart
    * Implements equiv of scaleBand().inverse() to map mouse pos to column.
    */
   xi(x) {
-    if(x <= this.x(1)) {
+    if(x <= this.xAxis(1)) {
       return 0
     }
-    for(var i = 2; i < this.x.domain().length; i++) {
-      if(x <= this.x(i)) {
+    for(var i = 2; i < this.xAxis.domain().length; i++) {
+      if(x <= this.xAxis(i)) {
         return i-1
       }
     }
-    return this.x.domain().length-1
+    return this.xAxis.domain().length-1
   }
 
   get() {
