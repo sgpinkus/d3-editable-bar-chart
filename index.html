@@ -5,14 +5,15 @@
     <link rel='icon' href='data:;' />
     <title></title>
     <style>
+    main {
+      max-width: 1280px;
+      margin: auto;
+    }
     .bar-bar, .bar {
       fill: steelblue;
     }
     .bar-active {
       fill: brown;
-    }
-    .axis--x path {
-      display: none;
     }
     </style>
     <script type="importmap">
@@ -26,22 +27,34 @@
     <script type="module">
       import * as d3 from 'd3'
       import { draw } from './dist/EditableBarChart.js';
-      const data = [0.57, 0.14, 0.17, 0.49, 0.29, 0.22, 0.01, 0.27, 0.57, 0.2, 0.19, 0.05, 0.8, 0.49, 0.31, 0.56, 0.75, 0.66, 0.67, 0.37, 0.62, 0.5, 0.82, 0.31, 0.57, 0.25, 0.87, 0.24, 0.89, 0.73, 0.76, 0.53, 0.79, 0.95, 0.31, 0.18, 0.56, 0.11, 0.87, 0.26, 0.22, 0.65, 0.13, 0.21, 0.96, 0.92, 0.61, 0.45];
+      let data = [0.57, 0.14, -0.17, 0.49, 0.29, 0.22, 0.01, 0.27, 0.57, 0.2, 0.19, 0.05, 0.8, 0.49, 0.31, 0.56, 0.75, 0.66, 0.67, 0.37, 0.62, 0.5, 0.82, 0.31, 0.57, 0.25, 0.87, 0.24, 0.89, 0.73, 0.76, 0.53, 0.79, 0.95, 0.31, 0.18, 0.56, 0.11, 0.87, 0.26, 0.22, 0.65, 0.13, 0.21, 0.96, 0.92, 0.61, 0.45];
 
+      function onChange(d) {
+        (d) => console.log('New data', d);
+        d3.select('svg').selectAll('*').remove();
+        mydraw(d);
+        // data = [...d];
+      }
+
+      function mydraw(data) {
         draw('svg', {
-          range: [0,1],
-          xFormatter: (n) => { return d3.format('02d')(Math.floor(n/2)) + ':' + d3.format('02d')((n % 2)*30); }
-        },
-        data,
-        (d) => console.log('New data', d),
+            // range: [0,1],
+            xFormatter: (n) => { return d3.format('02d')(Math.floor(n/2)) + ':' + d3.format('02d')((n % 2)*30); }
+          },
+          data,
+          onChange
         );
+      }
+
+      mydraw(data);
     </script>
   </head>
   <body>
-    <svg
-      ref='container'
-      viewBox="0 0 960 480"
-      preserveAspectRatio="xMidYMid meet">
-    </svg>
+    <main>
+      <svg
+        viewBox="0 0 1280 480"
+        preserveAspectRatio="xMidYMid meet">
+      </svg>
+    </main>
   </body>
 </html>

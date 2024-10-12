@@ -1,7 +1,8 @@
 import * as d3 from 'd3';
 const defaultOptions = {
     margin: { top: 20, right: 20, bottom: 40, left: 40 },
-    range: undefined,
+    range: [undefined, undefined],
+    autoPaddingFactor: [0.15, 0.15],
     xFormatter: null,
     precision: 3,
 };
@@ -12,18 +13,31 @@ export function draw(container, _options = {}, data, cb) {
         d3.select(this).select('.bar-bar').classed('bar-active', true);
         drawLine(event.y);
     }
-    function dragged(event) {
+    function dragged(event, datum) {
         const i = Number(index.get(this));
-        const [value, domainValue] = yValues(event.y);
-        selected[1] = scaleBandInvert(xPos)(xPos(i) + event.x);
+        // The change is proportional to the drag y offset from the zero position.
+        selected[1] = scaleBandInvert(xScale)(xScale(i) + event.x);
         selected = [Math.min(selected[0], selected[1]), Math.max(selected[0], selected[1])];
         g.selectAll('.bar-bar').classed('bar-active', false);
         const target = g.selectAll('.bar').filter((v, k) => k >= selected[0] && k <= selected[1]);
+        // The g on which drag event is registered has already been translated st 0 corresponds to 0 on the y-axis.
+        // Thus event.y above the x-axis is -ve the new height of bar, and scaleY(0) + event.y proportional to new data value.
+        const value = -event.y;
+        const domainValue = Number(Number(yScale.invert(yScale(0) - value)).toPrecision(options.precision));
+        // Yes I really needed this to figure these scale transforms out (a saner way WIP).
+        console.debug(`
+    data=${datum},
+    yPos(datum)=${yScale(datum)}
+    yPos(0)=${yScale(0)}
+    height=${height}
+    event.y=${event.y}
+    newValue=${value}
+    newDomainValue=${domainValue}`);
         target.data(Array.from(Array(target.size())).map(() => domainValue));
         target
-            .attr('transform', `translate(0, ${height - value})`)
             .selectAll('.bar-bar')
-            .attr('height', value)
+            .attr('height', Math.abs(value))
+            .attr('transform', () => `scale(1, ${-1 * Math.sign(value)})`)
             .classed('bar-active', true);
         drawLine(event.y);
     }
@@ -33,25 +47,36 @@ export function draw(container, _options = {}, data, cb) {
         cb(g.selectAll('.bar').data());
     }
     function getRange() {
-        const rangeMin = options.range && options.range[0];
-        const rangeMax = options.range && options.range[1];
-        const [min, max] = [rangeMin !== null && rangeMin !== void 0 ? rangeMin : Math.min(...data), rangeMax !== null && rangeMax !== void 0 ? rangeMax : Math.max(...data)];
+        const [min, max] = [Math.min(...data), Math.max(...data)];
         const spread = max - min;
-        const minSpread = rangeMin !== undefined ? 0 : 0.1 * spread;
-        const maxSpread = rangeMax !== undefined ? 0 : 0.5 * spread;
-        return [min - minSpread, max + maxSpread];
+        function _min() {
+            if (options.range && options.range[0] !== undefined)
+                return options.range[0];
+            if (spread)
+                return min - options.autoPaddingFactor[0] * spread;
+            else if (min !== 0) {
+                return (min < 0) ? min + options.autoPaddingFactor[0] * min : 0;
+            }
+            return -1;
+        }
+        function _max() {
+            if (options.range && options.range[1] !== undefined)
+                return options.range[1];
+            if (spread)
+                return max + options.autoPaddingFactor[1] * spread;
+            else if (max !== 0) {
+                return (max < 0) ? 0 : max + options.autoPaddingFactor[1] * max;
+            }
+            return 1;
+        }
+        return [_min(), _max()];
     }
-    function yValues(y) {
-        const value = height - y;
-        const domainValue = Math.round(yPos.invert(y) * Math.pow(10, options.precision)) / Math.pow(10, options.precision);
-        return [value, domainValue];
-    }
-    function drawLine(y) {
+    function drawLine(eventY) {
         lineGroup
             .attr('opacity', 1)
-            .attr('transform', `translate(0, ${y})`)
+            .attr('transform', `translate(0, ${yScale(0) + eventY})`)
             .select('text')
-            .text(d3.format(`.${options.precision}f`)(yPos.invert(y)));
+            .text(d3.format(`.${options.precision}f`)(yScale.invert(yScale(0) + eventY)));
     }
     const options = Object.assign(Object.assign({}, defaultOptions), _options);
     const index = d3.local();
@@ -59,27 +84,26 @@ export function draw(container, _options = {}, data, cb) {
     const width = svg.node().width.animVal.value - options.margin.left - options.margin.right;
     const height = svg.node().height.animVal.value - options.margin.top - options.margin.bottom;
     let selected = [-1, -1];
-    const xPos = d3.scaleBand().rangeRound([0, width]).padding(0.1).domain(Object.keys(data).map(i => +i));
-    const yPos = d3.scaleLinear().rangeRound([height, 0]).domain(getRange());
+    const xScale = d3.scaleBand().rangeRound([0, width]).padding(0.1).domain(Object.keys(data).map(i => +i));
+    // This says that a value of min-range should be drawn at height on the canvas.
+    // But heights of bars aren't directly mapped to canvas.
+    const _range = getRange();
+    const yScale = d3.scaleLinear().rangeRound([height, 0]).domain(_range);
     const g = svg.append('g')
         .attr('transform', `translate(${options.margin.left}, ${options.margin.top})`);
-    g.append('g') // y position in g is proportional to data values.
-        .attr('class', 'axis axis--x')
-        .attr('transform', `translate(0, ${height})`)
-        .call(d3.axisBottom(xPos).tickFormat(options.xFormatter));
-    g.selectAll('.axis--x g.tick text')
-        .attr('transform', 'rotate(-90) translate(-20,-14)');
-    g.append('g')
-        .attr('class', 'axis axis--y')
-        .call(d3.axisLeft(yPos).ticks(10, ''));
+    g.append('line')
+        .attr('stroke', 'black')
+        .attr('x1', 0)
+        .attr('x2', width)
+        .attr('y1', yScale(0))
+        .attr('y2', yScale(0));
     const dg = d3.drag();
-    const barLanes = g.selectAll('.bar').data(data).enter()
-        .append('g')
-        .attr('transform', (d, i) => `translate(${xPos(i)},0)`);
+    // Translate all bar origins to the their lanes and zero line.
+    const barLanes = g.selectAll('.bar').data(data).enter().append('g')
+        .attr('transform', (d, i) => `translate(${xScale(i)}, ${yScale(0)})`);
     const bars = barLanes
         .append('g')
         .attr('class', 'bar')
-        .attr('transform', (d) => `translate(0, ${yPos(d)})`)
         .each(function (d, i) { index.set(this, i); })
         .call(dg.on('start', started))
         .call(dg.on('drag', dragged))
@@ -89,8 +113,10 @@ export function draw(container, _options = {}, data, cb) {
         .append('rect')
         .attr('class', 'bar-bar')
         .attr('title', (d, i) => d + i)
-        .attr('width', xPos.bandwidth())
-        .attr('height', (d) => height - yPos(d))
+        .attr('width', xScale.bandwidth())
+        // If SVG allowed -ve h,w this would be a lot easier!
+        .attr('height', (d) => Math.abs(yScale(0) - yScale(d)))
+        .attr('transform', (d) => `scale(1, ${-1 * Math.sign(yScale(0) - yScale(d))})`)
         .on('mouseover', function () {
         d3.select(this).attr('opacity', '.50');
         d3.select(this.parentElement).select('.tool-tip')
@@ -120,6 +146,16 @@ export function draw(container, _options = {}, data, cb) {
         .attr('x', 0)
         .attr('y', 0)
         .attr('fill', 'black');
+    // xy axes.
+    g.append('g')
+        .attr('class', 'axis axis--x')
+        .attr('transform', `translate(0, ${height})`)
+        .call(d3.axisBottom(xScale).tickFormat(options.xFormatter));
+    g.selectAll('.axis--x g.tick text')
+        .attr('transform', 'rotate(-90) translate(-20,-14)');
+    g.append('g')
+        .attr('class', 'axis axis--y')
+        .call(d3.axisLeft(yScale).ticks(10, ''));
 }
 function scaleBandInvert(scale) {
     const domain = scale.domain();
